@@ -615,6 +615,3 @@ def append_image_to_pdf(pdf_path: str, image_path: str) -> None:
 
     with open(pdf_path, "wb") as f:
         output.write(f)
-
-
-# test_generate_report_for_an_apartment(44.44, 55.55, 50, [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], "10", "5", "4", "text")
