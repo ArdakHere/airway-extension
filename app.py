@@ -1,4 +1,4 @@
-import base64
+import base64  # remove imports that are not used
 from io import BytesIO
 
 from flask import Flask, request, jsonify, send_from_directory, send_file, Response
@@ -9,17 +9,20 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
+
+# we also gotta add Pydantic models for validation
+# Use FastAPI everywhere
 @app.route("/analyze/kolesa", methods=["POST"])
 def analyze_kolesa():
     try:
-
+        # all the functionality has to be in a separate utils file
         data = request.json
-
         html_data = data.get('html')
         car_data = read_remote_kolesa_page(html_data)
         car_emission_and_recs_tuple = request_metrics_and_recommendations(car_data)
         car_emission_data = car_emission_and_recs_tuple[0]
 
+        # use single кавычки
         gas_mileage = car_emission_data["Gas expenditure"]
         co2_val = car_emission_data["CO2"]
         car_recommendations_ev_nonev, nonev_recs, ev_recs = get_car_recommendations(car_data['price'])
@@ -30,6 +33,7 @@ def analyze_kolesa():
         ecofriendly_index_car = ((gas_mileage_number * 10) + co2_val_number) / 1000
         effect_index_numeric = ecofriendly_index_car
 
+        # this can be turned into a dict, in a separate file
         if ecofriendly_index_car >= 0.5:
             rgbColor = [131, 0, 0]
             effect_index = "Опасное"
@@ -43,18 +47,22 @@ def analyze_kolesa():
             rgbColor = [27, 152, 3]
             effect_index = "Низкое"
 
-        emission_data = {'gas_mileage': gas_mileage_number,
-                         'effect_index': effect_index,
-                         "effect_index_numeric": effect_index_numeric,
-                         'rgbColor': rgbColor,
-                         'ev_car_recs': ev_recs,
-                         'nonev_car_recs': nonev_recs,
-                         }
+        # work on indentations
+        # inconsistent кавычки
+        emission_data = {
+            'gas_mileage': gas_mileage_number,
+            'effect_index': effect_index,
+            "effect_index_numeric": effect_index_numeric,
+            'rgbColor': rgbColor,
+            'ev_car_recs': ev_recs,
+            'nonev_car_recs': nonev_recs,
+        }
         emission_data.update(car_data)
         return jsonify(emission_data)
     except Exception as e:
         print(f"Error: {e}")
         return jsonify({"error": "Internal server error"}), 500
+
 
 @app.route("/analyze/krisha", methods=["POST"])
 def analyze_krisha():
@@ -76,6 +84,7 @@ def analyze_krisha():
 
         aq_index_numeric_saved = result['aq_index_numeric']
 
+        # should be turned into a dict inside of something different
         if aq_index_numeric_saved <= 40:
             result['aq_index_numeric'] = "Не несет риска, воздух чист"
         if 50 >= aq_index_numeric_saved > 40:
@@ -125,7 +134,7 @@ def get_krisha_report():
 
         data = request.json.get('data', {})
 
-       # text_for_report = generate_gpt_apartment_report(data)
+        # should just pass the data dict inside of the function, no need to unpack it here
         image_base64 = test_generate_report_for_an_apartment(
             data['latitude'],
             data['longitude'],
@@ -175,7 +184,7 @@ def get_kolesa_report():
 
 @app.route("/find_objects", methods=["POST"])
 def find_objects():
-
+    # add try except block
 
     data = request.json
     coords = data.get('coords')
@@ -186,12 +195,12 @@ def find_objects():
     two_gis_key = os.getenv('TWOGIS_API_KEY')
 
     number_of_objects = make_2gis_request_and_return_object_count(
-    two_gis_key,
-    coords['lat'],
-    coords['lon'],
-    "",
-    distance,
-    object_to_search
+        two_gis_key,
+        coords['lat'],
+        coords['lon'],
+        "",
+        distance,
+        object_to_search
     )
 
     return jsonify(count=number_of_objects)

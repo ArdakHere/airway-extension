@@ -51,6 +51,7 @@ def get_pm25_week_history(filename: str) -> str | None:
         return None
 
 
+# should take just a dict inside
 def generate_report_for_an_apartment(
     latitude: float,
     longitude: float,
@@ -90,7 +91,8 @@ def generate_report_for_an_apartment(
     template = Image.open(APARTMENT_IMAGE_PATH)
     drawCertificate = ImageDraw.Draw(template)
 
-
+    # how can we make this more beautiful?
+    # fucking slop bullshit code, ugly as fuck
     R, G, B = aqIndexColor[0], aqIndexColor[1], aqIndexColor[2]
     Rpm25, Gpm25, Bpm25 = pm25Color[0], pm25Color[1], pm25Color[2]
     Rpm10, Gpm10, Bpm10 = pm10Color[0], pm10Color[1], pm10Color[2]
@@ -168,7 +170,7 @@ def generate_report_for_an_apartment(
     drawCertificate.text(
         (50, 800), text, font=textFont, fill=(0, 0, 0), spacing=10)
 
-  #  solution to circular import, if removed the error will reappear
+    #  solution to circular import, if removed the error will reappear
     from back_krisha import make_2gis_request_and_return_object_count
 
     two_gis_key = os.getenv('TWOGIS_API_KEY')
@@ -182,12 +184,13 @@ def generate_report_for_an_apartment(
         "парк")
 
     charger_num = make_2gis_request_and_return_object_count(
-         two_gis_key,
-         latitude,
-         longitude,
+        two_gis_key,
+        latitude,
+        longitude,
         "",
-         500,
-         "зарядка для автомобиля")
+        500,
+        "зарядка для автомобиля"
+    )
 
     print(f"{latitude} and {longitude}")
     park_icon = Image.open("./src/assets/img/icons_for_report/park_icon.png")
@@ -221,6 +224,7 @@ def generate_report_for_an_apartment(
     return img_str
 
 
+# should take just a dict inside
 def test_generate_report_for_an_apartment(
     latitude: float,
     longitude: float,

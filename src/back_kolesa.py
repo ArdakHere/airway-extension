@@ -10,6 +10,7 @@ from openai import OpenAI
 global client
 client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
+
 def get_car_recommendations(price: int) -> str:
     """
         Returns the string with recommendations for cars found from the car_dataset.csv
@@ -57,6 +58,8 @@ def get_car_recommendations(price: int) -> str:
 
     return recommendations_str, non_ev_recommendations_str, ev_recommendations_str
 
+
+# function nmaes are kinda too wordy
 def read_remote_kolesa_page(html_car_data: str) -> dict:
     """
         Read the html file of the kolesa listing
@@ -119,6 +122,7 @@ def read_remote_kolesa_page(html_car_data: str) -> dict:
 
     return car_info
 
+
 def extract_co2_emissions(co2_emissions_str: str) -> int:
     """
         Return the number from the co2_emissions_str string
@@ -136,6 +140,7 @@ def extract_co2_emissions(co2_emissions_str: str) -> int:
         return int(emissions_start)
     else:
         return None  # Return None if no match is found
+
 
 def extract_gas_mileage(gas_mileage_str: str):
     """
@@ -156,6 +161,7 @@ def extract_gas_mileage(gas_mileage_str: str):
     else:
         return None  # Return None if no match is found
 
+
 def request_metrics_and_recommendations(
     car_metric_data: dict
 ) -> tuple[dict, str]:
@@ -174,6 +180,7 @@ def request_metrics_and_recommendations(
         "N-wheel drive": car_metric_data["N-wheel drive"],
     }
 
+    # prompt should be moved to a separate file
     response = client.chat.completions.create(
         model="gpt-4",
         messages=[
@@ -200,6 +207,7 @@ def request_metrics_and_recommendations(
     report = response.choices[0].message.content
     lines = report.split("\n")
 
+    # switch statements can be used here
     emissions_values = {}
     for line in lines:
         if line.startswith("CO2"):
