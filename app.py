@@ -1,24 +1,20 @@
 import base64  # remove imports that are not used
 from io import BytesIO
 
-
-from fastapi import FastAPI
-
-app = FastAPI()
-
-from src.validation.schema import FindObjectModel, CarListingData, AptListingData
+from src.validation.schema import FindObjectModel, CarListingData, AptListingData, AptListingResponse, CarListingResponse
 from src.services.core import get_object_count, get_car_eco_data, get_apt_eco_data
 
-# we also gotta add Pydantic models for validation
-# Use FastAPI everywhere
+from fastapi import FastAPI
+app = FastAPI()
 
 
 @app.get('/')
 def home():
     return {"message": "Welcome to the Airway API!"}
 
+
 @app.post('/analyze/kolesa')
-def analyze_kolesa(data: CarListingData):
+def analyze_kolesa(data: CarListingData) -> CarListingResponse:
     """
         Returns eco data of the car based on its
         characteristics
@@ -32,7 +28,7 @@ def analyze_kolesa(data: CarListingData):
             - price (int): Price of the car
     \n**Returns**:
         \n data (dict): containing the following
-            - fuel_efficiency (str): Gas mileage of the car
+            - fuel_efficiency (float): Gas mileage of the car (l/100km)
             - effect_index (dict); containing the following
                 - rgbColor (tuple): RGB color code
                 - qualitativeIndex (str): Qualitative index
@@ -44,7 +40,7 @@ def analyze_kolesa(data: CarListingData):
     
 
 @app.post('/analyze/krisha')
-def analyze_krisha(data: AptListingData):
+def analyze_krisha(data: AptListingData) -> AptListingResponse:
     """
         Returns eco data of the apartment based on its
         characteristics
@@ -71,12 +67,10 @@ def analyze_krisha(data: AptListingData):
         num_of_ev_chargers (int): Number of electric car chargers within 500m
     """ 
     return get_apt_eco_data(data)
-    
-
 
 
 @app.post("/find_objects")
-def find_objects(data: FindObjectModel):
+def find_objects(data: FindObjectModel) -> int:
     """
         Return the number of objects found within the radius by 2GIS API
     \n**Args**:
@@ -149,7 +143,3 @@ def find_objects(data: FindObjectModel):
 #     except Exception as e:
 #         print(f"Ayyy: {e}")
 #         return jsonify({"error": "Internal server error"}), 500
-
-   
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)

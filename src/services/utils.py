@@ -1,27 +1,38 @@
 import logging
+import os
+import csv
+import requests
 import pandas as pd
 from pandas import DataFrame
 from math import radians, sin, cos, sqrt, atan2
 
 ## absolute path is used, the relative path does not work for some reason 
-df_sergek = pd.read_csv("/Users/ardaka/Desktop/auair/airway-extension/src/services/datasets/lean_sergek_aq_dataset.csv")
+df_sergek = pd.read_csv("./src/datasets/lean_sergek_aq_dataset.csv")
+two_gis_key = os.getenv('TWOGIS_API_KEY')
+
 
 def find_closest_sensor(
     sensor_locations: DataFrame,
     apartment_location: dict
 ) -> dict:
     """
-    Find the closest sensor to the apartment
-
-    Args:
+        Find the closest sensor to the apartment
+    \n**Args**:
         sensor_locations (DataFrame): DataFrame with sensor locations
-        apartment_location (dict): dictionary with apartment location
+        apartment_location (CoordsModel): CoordsModel with apartment location
 
-    Returns:
-        dict: dictionary with the closest sensor location"""
+    \n**Returns**:
+        closest_sensor (dict): dict containing corresponding data
+        of the closest sensor
+            - location_id (int): location id of the sensor
+            - pm25 (float): PM2.5 value of the sensor
+            - pm10 (float): PM10 value of the sensor
+            - co (float): CO value of the sensor
+            - lat (float): latitude of the sensor
+            - lon (float): longitude of the sensor
+    """
     closest_sensor = None
     min_distance_from_sensor_to_apartment = float('inf')
-
 
     for _, sensor_location in sensor_locations.iterrows():
 
@@ -36,6 +47,7 @@ def find_closest_sensor(
     
     return closest_sensor
 
+
 def calculate_haversine(
     lat1: float,
     lon1: float,
@@ -43,17 +55,17 @@ def calculate_haversine(
     lon2: float
 ) -> float:
     """
-    Calculate the great circle distance between two points
-    on the earth (specified in decimal degrees)
+        Calculate the great circle distance between two points
+        on the earth (specified in decimal degrees)
+    **Args**:
+        lat1 (float): latitude of the apartment
+        lon1 (float): longitude of the apartment
+        lat2 (float): latitude of the given sensor
+        lon2 (float): longitude of the given sensor
+    **Returns**:
+        distance_to_closest_sensor (float): distance between two points in kilometers
+    """
 
-    Args:
-        lat1 (float): latitude of the first point
-        lon1 (float): longitude of the first point
-        lat2 (float): latitude of the second point
-        lon2 (float): longitude of the second point
-
-    Returns:
-        float: distance between two points in kilometers"""
     lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
     dlon = lon2 - lon1
     dlat = lat2 - lat1
@@ -63,15 +75,30 @@ def calculate_haversine(
 
     return distance_to_closest_sensor
 
+
 def calculate_air_quality_index(metrics_data: dict) -> dict:
     """
-    Calculate the air quality index based on the air quality metrics
-
-    Args:
-        metrics_data (dict): dictionary with air quality metrics
-
-    Returns:
-        dict: dictionary with air quality index and color"""
+        Calculate the air quality index based on the air quality metrics
+    **Args**:
+        metrics_data (dict): dict containing corresponding data
+        of the closest sensor
+            - location_id (int): location id of the sensor
+            - pm25 (float): PM2.5 value of the sensor
+            - pm10 (float): PM10 value of the sensor
+            - co (float): CO value of the sensor
+            - lat (float): latitude of the sensor
+            - lon (float): longitude of the sensor
+    **Returns**:
+        index_color_data (dict): dictionary with air quality index and color
+            - pm25 (float): PM2.5 value
+            - pm10 (float): PM10 value
+            - co (float): CO value
+            - aq_index_numeric (float): numeric value of the eco index
+            - aq_index_color (tuple[int, int, int]): color of the eco index
+            - color_pm25 (tuple[int, int, int]): color of the PM2.5 value
+            - color_pm10 (tuple[int, int, int]): color of the PM10 value
+            - color_co (tuple[int, int, int]): color of the CO value
+    """
     aq_index = 0
     pm25_weight = 0.5
     pm10_weight = 0.3
@@ -94,14 +121,33 @@ def calculate_air_quality_index(metrics_data: dict) -> dict:
 
 
 def get_weighted_aq_index(metrics: dict) -> float:
+    """
+        Calculate the weighted air quality index based on
+        the weights
+    **Args**:
+        metrics (dict): dict containing the following keys:
+            - pm25 (float): PM2.5 value
+            - pm10 (float): PM10 value
+            - co (float): CO value
+    **Returns**:
+        weighted_aq_index (float): weighted air quality index
+    """
     pm25_weight = 0.5
     pm10_weight = 0.3
     co_weight = 0.2
-    
-    return pm25_weight * metrics['pm25'] + pm10_weight * metrics['pm10'] + co_weight * metrics['co']
+    weighted_aq_index = pm25_weight * metrics['pm25'] + pm10_weight * metrics['pm10'] + co_weight * metrics['co']
+
+    return weighted_aq_index
 
 
-def get_particle_color(particle_val: float):
+def get_particle_color(particle_val: float) -> tuple:
+    """
+        Returns the color based on the particle value
+    **Args**:
+        particle_val (float): particle value
+    **Returns**:
+        tuple: RGB color code
+    """
     if particle_val >= 100:
         return (255, 119, 0)
     if particle_val >= 85:
@@ -115,14 +161,16 @@ def get_particle_color(particle_val: float):
 
 
 # ecofriendly_index_car = ((gas_mileage_number * 10) + co2_val_number) / 1000
-def get_car_eco_index(eco_index: float):
+def get_car_eco_index(eco_index: float) -> dict:
     """
         Returns the dict with color and qualitative index corresponding
         to the eco index 
     Args:
         eco_index (float): eco index
     Returns:
-        
+        dict: dictionary with the following
+            - rgbColor (tuple[int, int, int]): RGB color code
+            - qualitativeIndex (str): qualitative index
     """
     if eco_index >= 0.5:
         rgbColor = (131, 0, 0)
@@ -142,7 +190,7 @@ def get_car_eco_index(eco_index: float):
     return {"rgbColor": rgbColor, "qualitativeIndex": effect_index}
 
 
-def get_apt_eco_index(eco_index: float):
+def get_apt_eco_index(eco_index: float) -> str:
     """
         Returns the qualitative index corresponding to the eco index 
     Args:
@@ -150,17 +198,17 @@ def get_apt_eco_index(eco_index: float):
     Returns:
         str: qualitative index
     """
-    if aq_index_numeric_saved <= 40:
+    if eco_index <= 40:
         return "Не несет риска, воздух чист"
-    elif 50 >= aq_index_numeric_saved > 40:
+    elif 50 >= eco_index > 40:
         return "Минимальное"
-    elif 70 >= aq_index_numeric_saved > 50:
+    elif 70 >= eco_index > 50:
         return "Средняя"
-    elif 80 >= aq_index_numeric_saved > 70:
+    elif 80 >= eco_index > 70:
         return "Повышенная"
-    elif 90 > aq_index_numeric_saved > 80:
+    elif 90 > eco_index > 80:
         return "Высокая"
-    elif aq_index_numeric_saved >= 90:
+    elif eco_index >= 90:
         return "Опасная"
     else:
         raise ValueError("eco_index must be between 0 and 1")
@@ -172,14 +220,14 @@ def get_object_count(
     """
         Return the number of objects found within the radius by 2GIS API
     **Args**:
-        data: dict, containing the following keys:
-            - coords: dict, containing the following keys:
-                - lat: float, latitude
-                - lon: float, longitude
-            - radius: int, radius in meters
-            - object_to_search: str, object to search for
+        data (dict): containing the following keys:
+            - coords (CoordsModel): containing the following keys:
+                - lat: (float): latitude
+                - lon (float): longitude
+            - radius (int): radius in meters
+            - object_to_search (str): object to search for
     **Returns**:
-        int: total count of objects found within the radius
+        total (int): total count of objects found within the radius
     """
 
     if not two_gis_key:
@@ -191,15 +239,13 @@ def get_object_count(
     object_to_search = data.get('object_to_search')
 
     location = f"{coords['lon']}%2C{coords['lat']}"
-    
+
     object_type = ""
- 
+
     base_url = f"https://catalog.api.2gis.com/3.0/items?q={object_to_search}&point={location}&radius={radius}&type={object_type}&key={two_gis_key}"  # noqa: E501
 
-    
     try:
         response = requests.get(base_url)
-        print(response.status_code)
         if response.status_code == 200:
             response_data = json.loads(response.text)
             if "result" in response_data:
@@ -222,6 +268,7 @@ def get_object_count(
         else:
             logging.error(f"Unexpected error from API: {response.status_code}")
             raise HTTPException(status_code=500, detail="Unexpected error from API")
+    ## refactor exceptions! why so many exceptions?
     except requests.Timeout:
         logging.error("Request timed out")
         raise HTTPException(status_code=504, detail="Gateway Timeout: External API did not respond in time")
@@ -237,6 +284,23 @@ def get_object_count(
 
 
 def access_metrics(coords: dict) -> dict:
+    """
+        Returns the key metrics of the air quality based on the coordinates
+    **Args**:
+        coords (CoordsModel), containing the following keys:
+            - lat (float): latitude
+            - lon: (float): longitude
+    **Returns**:
+        calculated_index_dict (dict): dictionary with the following
+            - pm25 (float): PM2.5 value
+            - pm10 (float): PM10 value
+            - co (float): CO value
+            - aq_index_numeric (float): numeric value of the eco index
+            - aq_index_color (tuple[int, int, int]): color of the eco index
+            - color_pm25 (tuple[int, int, int]): color of the PM2.5 value
+            - color_pm10 (tuple[int, int, int]): color of the PM10 value
+            - color_co (tuple[int, int, int]): color of the CO value
+    """
 
     sensor_locations_df = pd.DataFrame(df_sergek).iloc[1:]
 
@@ -250,11 +314,13 @@ def access_metrics(coords: dict) -> dict:
 
 def get_car_recommendations(price: int) -> str:
     """
-        Returns the string with recommendations for cars found from the car_dataset.csv
+        Returns the string with similarly priced cars from car_dataset.csv
+        based on the price argument
     Args:
         price (int):
     Returns:
-        str: car recommendations for the simnilar cost to price argument
+        non_ev_recommendations_str (str): simlarly priced non-electric cars
+        ev_recommendations_str (str): simlarly priced electric cars
     """
     non_ev_recommendations = []
     ev_recommendations = []
@@ -270,10 +336,7 @@ def get_car_recommendations(price: int) -> str:
             car_model = row['model']
             car_type = row['type']
 
-            if ',' in price:
-                price = price.replace(',', '')
-
-            if int(price) - 1200000 <= car_price <= int(price) + 1200000:
+            if price - 1200000 <= car_price <= price + 1200000:
                 # Check if it's an electric or non-electric car
                 if car_type == 'non-ev':
                     if len(non_ev_recommendations) < 2:
@@ -290,7 +353,4 @@ def get_car_recommendations(price: int) -> str:
     non_ev_recommendations_str = "\n".join(non_ev_recommendations)
     ev_recommendations_str = "\n".join(ev_recommendations)
 
-    # Combine non-ev and ev recommendations into a single string
-    recommendations_str = f"\n\nНе электрические авто:\n{non_ev_recommendations_str} \n\nЭлектрические авто:\n{ev_recommendations_str}"
-
-    return recommendations_str, non_ev_recommendations_str, ev_recommendations_str
+    return non_ev_recommendations_str, ev_recommendations_str
