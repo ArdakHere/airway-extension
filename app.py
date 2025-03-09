@@ -1,210 +1,155 @@
 import base64  # remove imports that are not used
 from io import BytesIO
 
-from flask import Flask, request, jsonify, send_from_directory, send_file, Response
-from src.back_krisha import *
-from src.plotter import *
-from flask_cors import CORS
 
-app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+from fastapi import FastAPI
 
+app = FastAPI()
+
+from src.validation.schema import FindObjectModel, CarListingData, AptListingData
+from src.services.core import get_object_count, get_car_eco_data, get_apt_eco_data
 
 # we also gotta add Pydantic models for validation
 # Use FastAPI everywhere
-@app.route("/analyze/kolesa", methods=["POST"])
-def analyze_kolesa():
-    try:
-        # all the functionality has to be in a separate utils file
-        data = request.json
-        html_data = data.get('html')
-        car_data = read_remote_kolesa_page(html_data)
-        car_emission_and_recs_tuple = request_metrics_and_recommendations(car_data)
-        car_emission_data = car_emission_and_recs_tuple[0]
-
-        # use single кавычки
-        gas_mileage = car_emission_data["Gas expenditure"]
-        co2_val = car_emission_data["CO2"]
-        car_recommendations_ev_nonev, nonev_recs, ev_recs = get_car_recommendations(car_data['price'])
-
-        gas_mileage_number = extract_gas_mileage(gas_mileage)
-        co2_val_number = extract_co2_emissions(co2_val)
-
-        ecofriendly_index_car = ((gas_mileage_number * 10) + co2_val_number) / 1000
-        effect_index_numeric = ecofriendly_index_car
-
-        # this can be turned into a dict, in a separate file
-        if ecofriendly_index_car >= 0.5:
-            rgbColor = [131, 0, 0]
-            effect_index = "Опасное"
-        if ecofriendly_index_car >= 0.3 and ecofriendly_index_car < 0.5:
-            rgbColor = [255, 225, 20]
-            effect_index = "Высокое"
-        if ecofriendly_index_car >= 0.2 and ecofriendly_index_car < 0.3:
-            rgbColor = [198, 239, 86]
-            effect_index = "Среднее"
-        if ecofriendly_index_car >= 0 and ecofriendly_index_car < 0.2:
-            rgbColor = [27, 152, 3]
-            effect_index = "Низкое"
-
-        # work on indentations
-        # inconsistent кавычки
-        emission_data = {
-            'gas_mileage': gas_mileage_number,
-            'effect_index': effect_index,
-            "effect_index_numeric": effect_index_numeric,
-            'rgbColor': rgbColor,
-            'ev_car_recs': ev_recs,
-            'nonev_car_recs': nonev_recs,
-        }
-        emission_data.update(car_data)
-        return jsonify(emission_data)
-    except Exception as e:
-        print(f"Error: {e}")
-        return jsonify({"error": "Internal server error"}), 500
 
 
-@app.route("/analyze/krisha", methods=["POST"])
-def analyze_krisha():
-    try:  # error is here in the try block
+@app.get('/')
+def home():
+    return {"message": "Welcome to the Airway API!"}
 
-        data = request.json
+@app.post('/analyze/kolesa')
+def analyze_kolesa(data: CarListingData):
+    """
+        Returns eco data of the car based on its
+        characteristics
+    \n**Args**:
+        \n data (CarListingData): containing the following
+            - car_title (str): Brand and model of the car
+            - prod_year (str): Production year
+            - engine_displacement (float): Engine displacement of the car
+            - distance_run_km (int): Distance run in kilometers
+            - N_wheel_drive (WheelDrive): Number of wheels drive
+            - price (int): Price of the car
+    \n**Returns**:
+        \n data (dict): containing the following
+            - fuel_efficiency (str): Gas mileage of the car
+            - effect_index (dict); containing the following
+                - rgbColor (tuple): RGB color code
+                - qualitativeIndex (str): Qualitative index
+            - effect_index_numeric (float): Numeric value of the eco index
+            - ev_car_recs (str): Recommendations for electric cars
+            - nonev_car_recs (str): Recommendations for non-electric cars
+    """
+    return get_car_eco_data(data)
+    
 
-        coordinates = data.get('coords')
-
-        if not coordinates:
-            return jsonify({"error": "Coordinates missing"}), 400
-
-        new_coords = {'Latitude': coordinates.pop('lat'), 'Longitude': coordinates.pop('lon')}
-
-        result = access_metrics(new_coords)
-
-        result['latitude'] = new_coords['Latitude']
-        result['longitude'] = new_coords['Longitude']
-
-        aq_index_numeric_saved = result['aq_index_numeric']
-
-        # should be turned into a dict inside of something different
-        if aq_index_numeric_saved <= 40:
-            result['aq_index_numeric'] = "Не несет риска, воздух чист"
-        if 50 >= aq_index_numeric_saved > 40:
-            result['aq_index_numeric'] = "Минимальное"
-        if 70 >= aq_index_numeric_saved > 50:
-            result['aq_index_numeric'] = "Средняя"
-        if 80 >= aq_index_numeric_saved > 70:
-            result['aq_index_numeric'] = "Повышенная"
-        if 90 > aq_index_numeric_saved > 80:
-            result['aq_index_numeric'] = "Высокая"
-        if aq_index_numeric_saved >= 90:
-            result['aq_index_numeric'] = "Опасная"
-
-        two_gis_key = os.getenv('TWOGIS_API_KEY')
-        parks = make_2gis_request_and_return_object_count(
-        two_gis_key,
-            new_coords['Latitude'],
-            new_coords['Longitude'],
-            "adm_div",
-            800,
-            "парк"
-        )
-
-        ev_chargers = make_2gis_request_and_return_object_count(
-            two_gis_key,
-            new_coords['Latitude'],
-            new_coords['Longitude'],
-            "",
-            500,
-            "зарядка для автомобиля"
-        )
-
-        ## missing the numeric number of aq
-        result.update({"aq_index_numeric_int": aq_index_numeric_saved,
-            "num_of_parks": parks,
-                       "num_of_ev_chargers": ev_chargers})
-
-        return jsonify(result)
-
-    except Exception as e:
-        print(f"Error: {e}")
-        return jsonify({"error": "Internal server error"}), 6969
-
-@app.route("/get_krisha_report", methods=["POST"])
-def get_krisha_report():
-    try:
-
-        data = request.json.get('data', {})
-
-        # should just pass the data dict inside of the function, no need to unpack it here
-        image_base64 = test_generate_report_for_an_apartment(
-            data['latitude'],
-            data['longitude'],
-            data['aq_index_numeric_int'],
-            data['aq_index_color'],
-            data['color_pm25'],
-            data['color_pm10'],
-            data['color_co'],
-            data['pm25'],
-            data['pm10'],
-            data['co'],
-            ""
-        )
-
-        new_dict = {'report_image': image_base64}
-        return jsonify(new_dict)
-
-    except Exception as e:
-        print(f"Ayyy: {e}")
-        return jsonify({"error": "Internal server error"}), 500
+@app.post('/analyze/krisha')
+def analyze_krisha(data: AptListingData):
+    """
+        Returns eco data of the apartment based on its
+        characteristics
+    \n**Args**:
+        \ncoords (CoordsModel): containing the following
+            - lat (float): Latitude coordinate
+            - lon (float): Longitude coordinate
+        location (str): Location of the apartment (city, settlement, etc.)
+        street (str): Street of the apartment
+        floor_number (int): Floor number of the apartment
+        area (float): Area of the apartment in square meters
+        room_count (int): The amount of rooms in the apartment
+        year_of_construction (int): Year of construction of the apartment
+    \n**Returns**:
+        \npm25 (float): PM2.5 value
+        pm10 (float): PM10 value
+        co (float): CO value
+        aq_index_numeric_int (float): Numeric value of the eco index
+        aq_index_color (tuple): Color of the eco index
+        color_pm25 (tuple): Color of the PM2.5 value
+        color_pm10 (tuple): Color of the PM10 value
+        color_co (tuple): Color of the CO value
+        num_of_parks (int): Number of parks within 800m
+        num_of_ev_chargers (int): Number of electric car chargers within 500m
+    """ 
+    return get_apt_eco_data(data)
+    
 
 
-@app.route("/get_kolesa_report", methods=["POST"])
-def get_kolesa_report():
-    try:
 
-        data = request.json.get('data', {})
+@app.post("/find_objects")
+def find_objects(data: FindObjectModel):
+    """
+        Return the number of objects found within the radius by 2GIS API
+    \n**Args**:
+        \ndata (FindObjectModel): containing the following
+            coords (CoordsModel), containing the following keys:
+                - lat: float, latitude
+                - lon: float, longitude
+            radius (int): radius in meters
+            object_to_search (str): object to search for
+    \n**Returns**:
+        \ntotal (int): number of objects found within the radius
+    """
+    # add try except block 
 
-        image_base64 = generate_report_for_a_car(
-            data['car_title'],
-            data['generation'],
-            data['engine_displacement'],
-            data['distance run (km)'],
-            data['N-wheel drive'],
-            data['price'],
-            data['gas_mileage'],
-            data['effect_index_numeric'],
-        )
-
-        new_dict = {'report_image': image_base64}
-        return jsonify(new_dict)
-
-    except Exception as e:
-        print(f"Ayyy: {e}")
-        return jsonify({"error": "Internal server error"}), 500
+    return get_object_count(data)
 
 
-@app.route("/find_objects", methods=["POST"])
-def find_objects():
-    # add try except block
 
-    data = request.json
-    coords = data.get('coords')
-    object_to_search = data.get('objectType')
-    distance = data.get('distance')
+# ### REPORT GENERATION ###
+# @app.post('/get_krisha_report')
+# def get_krisha_report():
+#     try:
+
+#         data = request.json.get('data', {})
+
+#         # should just pass the data dict inside of the function, no need to unpack it here
+#         image_base64 = test_generate_report_for_an_apartment(
+#             data['latitude'],
+#             data['longitude'],
+#             data['aq_index_numeric_int'],
+#             data['aq_index_color'],
+#             data['color_pm25'],
+#             data['color_pm10'],
+#             data['color_co'],
+#             data['pm25'],
+#             data['pm10'],
+#             data['co'],
+#             ""
+#         )
+
+#         new_dict = {'report_image': image_base64}
+#         return jsonify(new_dict)
+
+#     except Exception as e:
+#         print(f"Ayyy: {e}")
+#         return jsonify({"error": "Internal server error"}), 500
 
 
-    two_gis_key = os.getenv('TWOGIS_API_KEY')
+### REPORT GENERATION ###
+# @app.post("/get_kolesa_report")
+# def get_kolesa_report():
+#     try:
 
-    number_of_objects = make_2gis_request_and_return_object_count(
-        two_gis_key,
-        coords['lat'],
-        coords['lon'],
-        "",
-        distance,
-        object_to_search
-    )
+#         data = request.json.get('data', {})
 
-    return jsonify(count=number_of_objects)
+#         image_base64 = generate_report_for_a_car(
+#             data['car_title'],
+#             data['generation'],
+#             data['engine_displacement'],
+#             data['distance run (km)'],
+#             data['N-wheel drive'],
+#             data['price'],
+#             data['gas_mileage'],
+#             data['effect_index_numeric'],
+#         )
 
+#         new_dict = {'report_image': image_base64}
+#         return jsonify(new_dict)
 
+#     except Exception as e:
+#         print(f"Ayyy: {e}")
+#         return jsonify({"error": "Internal server error"}), 500
+
+   
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
